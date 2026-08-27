@@ -355,7 +355,7 @@ export default function App() {
       />
       <main className="ml-[260px] min-w-0 flex-1 max-[760px]:ml-0">
         <button
-          className={`${ui.iconButton} fixed left-3 top-3 z-20 hidden size-10 bg-[#111c34] text-white shadow-[0_6px_18px_#111c3438] max-[760px]:grid`}
+          className={`${ui.iconButton} fixed left-3 top-3 z-20 hidden size-11 !border !border-white/15 !bg-[#111c34] !text-white shadow-[0_8px_22px_#111c3450] max-[760px]:grid [&_svg]:drop-shadow-[0_1px_1px_#00000055]`}
           onClick={() => setSidebarOpen(true)}
           aria-label="Open navigation"
         >
