@@ -11,7 +11,7 @@ export const ui = {
   toolbar: "mb-4 flex gap-2.5 max-[760px]:flex-wrap",
   search: "flex h-[38px] min-w-[260px] items-center gap-2 rounded-[9px] border border-[#e5e9f1] bg-white px-3 text-[#8d95a4] max-[760px]:min-w-full [&_input]:w-full [&_input]:border-0 [&_input]:text-[11px] [&_input]:outline-0",
   error: "mb-[14px] flex items-center justify-between gap-3 rounded-[9px] border border-[#f1c8c8] bg-[#fff0f0] px-[14px] py-[11px] text-[11px] text-[#a74343]",
-  backdrop: "fixed inset-0 z-[110] grid place-items-center bg-[#0b13256b] p-5 backdrop-blur-[2px]",
+  backdrop: "fixed inset-0 z-[110] grid place-items-center bg-[#0b13256b] p-5 backdrop-blur-[2px] max-[520px]:p-2",
   status: "inline-flex items-center rounded-[10px] px-[7px] py-1 text-[8px] font-semibold",
   formControl: "w-full rounded-[9px] border border-[#dfe4ec] bg-[#fbfcfe] px-[11px] py-[10px] text-[11px] text-[#2f394a] outline-none focus:border-[#5e86e5] focus:shadow-[0_0_0_3px_#3267e314]",
 }

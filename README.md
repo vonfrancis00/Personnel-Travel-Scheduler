@@ -21,10 +21,11 @@ Restart `npm run dev` after changing environment variables, then select **Connec
 
 ### Apps Script setup (no Google Cloud Console)
 
-1. Copy the contents of `google-apps-script/Code.gs` into the Apps Script project's `Code.gs` file and save it.
+1. Copy the contents of `google-apps-script/Code.gs` into the Apps Script project's `Code.gs` file and save it. Under **Services**, add both **Google Calendar API** and **Gmail API**.
 2. Open **Project Settings → Script properties** and add:
    - `ACCESS_CODE`: a long random value.
    - `CALENDAR_ID`: `primary`, or the ID of one shared calendar.
+   - `PERSONNEL_EMAILS` (optional): a JSON object that overrides the default server-side personnel email directory in `Code.gs`, for example `{"Albert Rio":"albert@example.com","Clifford Jay":"clifford@example.com"}`. Do not add it to `.env.local`.
 3. Select **Deploy → New deployment → Web app**.
 4. Set **Execute as** to **Me** and **Who has access** to **Anyone**. Authorize Calendar access when prompted.
 5. Copy the deployed `/exec` Web App URL into `.env.local`:

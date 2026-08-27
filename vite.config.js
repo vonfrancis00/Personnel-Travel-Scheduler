@@ -4,8 +4,6 @@ import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 
 function appsScriptMiddleware(endpoint) {
-  const eventCache = new Map()
-
   return {
     name: "apps-script-calendar-api",
     configureServer(server) {
@@ -16,18 +14,6 @@ function appsScriptMiddleware(endpoint) {
           localUrl.searchParams.forEach((value, key) => targetUrl.searchParams.append(key, value))
 
           const method = request.method || "GET"
-          const isEventRead = method === "GET" && localUrl.searchParams.get("action") === "events"
-          const cacheIdentity = ["code", "timeMin", "timeMax"]
-            .map((key) => localUrl.searchParams.get(key) || "")
-            .join("|")
-          const cachedEventResponse = eventCache.get(cacheIdentity)
-          if (isEventRead && cachedEventResponse?.expiresAt > Date.now()) {
-            response.statusCode = 200
-            response.setHeader("content-type", "application/json; charset=utf-8")
-            response.setHeader("cache-control", "no-store")
-            response.end(cachedEventResponse.body)
-            return
-          }
           const options = {
             method,
             redirect: "follow",
@@ -67,11 +53,6 @@ function appsScriptMiddleware(endpoint) {
               )
               return
             }
-          }
-          if (isEventRead && upstream.ok) {
-            eventCache.set(cacheIdentity, { body, expiresAt: Date.now() + 600000 })
-          } else if (method !== "GET") {
-            eventCache.clear()
           }
           response.statusCode = upstream.status
           response.setHeader(

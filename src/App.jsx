@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Sidebar from "./components/Sidebar"
 import Dashboard from "./pages/Dashboard"
+import Calendar from "./pages/Calendar"
 import TravelSchedules from "./pages/TravelSchedules"
 import Personnel from "./pages/Personnel"
 import Settings from "./pages/Settings"
@@ -10,12 +11,15 @@ import SuccessPopup from "./components/SuccessPopup"
 import { ui } from "./styles"
 import {
   createCalendarEvent,
+  deleteCalendarEvent,
   getCalendarEvents,
   requestCalendarAccess,
 } from "./services/api"
+import { loadSettings, saveSettings } from "./services/settings"
 
 const pages = {
   Dashboard,
+  Calendar,
   "Travel Schedules": TravelSchedules,
   Personnel,
   Settings,
@@ -40,10 +44,14 @@ const eventOverlapsRange = (event, range) => {
   return start < new Date(range.timeMax) && end > new Date(range.timeMin)
 }
 const replaceEventsInRange = (current, incoming, range) =>
-  mergeEvents(current.filter((event) => !eventOverlapsRange(event, range)), incoming)
+  mergeEvents(
+    current.filter((event) => !eventOverlapsRange(event, range)),
+    incoming,
+  )
 
 export default function App() {
-  const [activePage, setActivePage] = useState("Dashboard")
+  const [settings, setSettings] = useState(loadSettings)
+  const [activePage, setActivePage] = useState(() => loadSettings().preferences.defaultPage)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [calendar, setCalendar] = useState({
     events: [],
@@ -57,51 +65,89 @@ export default function App() {
     error: "",
     selectedEvent: null,
   })
-  const [successPopup, setSuccessPopup] = useState(false)
+  const [successPopup, setSuccessPopup] = useState({ open: false, title: "", message: "" })
   const accessToken = useRef("")
   const autoConnectStarted = useRef(false)
   const refreshInFlight = useRef(null)
   const monthRequests = useRef(new Map())
   const loadedMonths = useRef(new Set())
   const travelPageRetryStarted = useRef(false)
+  const sentReminders = useRef(new Set())
   const ActivePage = pages[activePage]
   const navigate = (page) => {
     setActivePage(page)
     setSidebarOpen(false)
   }
-  const refreshCalendar = useCallback((token = accessToken.current, { background = false } = {}) => {
-    if (!token) return
-    if (refreshInFlight.current) return refreshInFlight.current
-    if (!background) setCalendar((state) => ({ ...state, loading: true, error: "" }))
-    const currentMonth = new Date()
-    const range = monthRange(currentMonth)
-    const request = getCalendarEvents(token, range)
-      .then((events) => {
-        loadedMonths.current.add(monthKey(currentMonth))
-        setCalendar((state) => ({
-          ...state,
-          events: replaceEventsInRange(state.events, events, range),
-          connected: true,
-          loading: background ? state.loading : false,
-          error: "",
-          lastSync: new Date(),
-        }))
-        return events
+  const updateSettings = (nextSettings) => {
+    setSettings(nextSettings)
+    saveSettings(nextSettings)
+  }
+  useEffect(() => {
+    if (
+      !settings.notifications.travelReminders ||
+      !("Notification" in window) ||
+      Notification.permission !== "granted"
+    )
+      return
+    const checkReminders = () => {
+      const now = Date.now()
+      const lead = settings.notifications.reminderMinutes * 60 * 1000
+      calendar.events.forEach((event) => {
+        const start =
+          event.start instanceof Date ? event.start.getTime() : new Date(event.start).getTime()
+        const key = eventKey(event)
+        if (start > now && start - now <= lead && !sentReminders.current.has(key)) {
+          new Notification(event.title || "Upcoming travel", {
+            body: `Starts ${new Date(start).toLocaleString("en-PH")}`,
+          })
+          sentReminders.current.add(key)
+        }
       })
-      .catch((error) => {
-        setCalendar((state) => ({
-          ...state,
-          loading: background ? state.loading : false,
-          error: error.message,
-        }))
-        return []
-      })
-      .finally(() => {
-        refreshInFlight.current = null
-      })
-    refreshInFlight.current = request
-    return request
-  }, [])
+    }
+    checkReminders()
+    const interval = window.setInterval(checkReminders, 30000)
+    return () => window.clearInterval(interval)
+  }, [
+    calendar.events,
+    settings.notifications.reminderMinutes,
+    settings.notifications.travelReminders,
+  ])
+  const refreshCalendar = useCallback(
+    (token = accessToken.current, { background = false } = {}) => {
+      if (!token) return
+      if (refreshInFlight.current) return refreshInFlight.current
+      if (!background) setCalendar((state) => ({ ...state, loading: true, error: "" }))
+      const currentMonth = new Date()
+      const range = monthRange(currentMonth)
+      const request = getCalendarEvents(token, range)
+        .then((events) => {
+          loadedMonths.current.add(monthKey(currentMonth))
+          setCalendar((state) => ({
+            ...state,
+            events: replaceEventsInRange(state.events, events, range),
+            connected: true,
+            loading: background ? state.loading : false,
+            error: "",
+            lastSync: new Date(),
+          }))
+          return events
+        })
+        .catch((error) => {
+          setCalendar((state) => ({
+            ...state,
+            loading: background ? state.loading : false,
+            error: error.message,
+          }))
+          return []
+        })
+        .finally(() => {
+          refreshInFlight.current = null
+        })
+      refreshInFlight.current = request
+      return request
+    },
+    [],
+  )
   const loadCalendarMonth = useCallback((date, { background = false, force = false } = {}) => {
     const token = accessToken.current
     if (!token) return Promise.resolve([])
@@ -214,7 +260,7 @@ export default function App() {
   const addTravel = async (form) => {
     setTravelModal((state) => ({ ...state, saving: true, error: "" }))
     try {
-      await createCalendarEvent(form)
+      const result = await createCalendarEvent(form)
       if (form.eventId) {
         const personnel = form.personnel
           .split(",")
@@ -238,7 +284,23 @@ export default function App() {
         await refreshCalendar()
       }
       setTravelModal({ open: false, saving: false, error: "", selectedEvent: null })
-      setSuccessPopup(true)
+      const sentCount = result.email?.sent?.length || 0
+      const missingNames = result.email?.missing || []
+      const failedEmails = result.email?.failed || []
+      const emailMessage = sentCount
+        ? ` Itinerary email${sentCount === 1 ? " was" : "s were"} sent to ${sentCount} personnel.`
+        : " No itinerary emails were sent."
+      const missingMessage = missingNames.length
+        ? ` No configured email was available for: ${missingNames.join(", ")}.`
+        : ""
+      const failedMessage = failedEmails.length
+        ? ` Gmail delivery failed for: ${failedEmails.map((item) => item.name).join(", ")}. ${failedEmails[0].error || "Check the Apps Script execution log and Gmail authorization."}`
+        : ""
+      setSuccessPopup({
+        open: true,
+        title: "Assignment saved",
+        message: `The personnel and notes were updated in Google Calendar.${emailMessage}${missingMessage}${failedMessage}`,
+      })
       return true
     } catch (error) {
       setTravelModal((state) => ({
@@ -251,15 +313,39 @@ export default function App() {
   }
   const openTravelModal = (selectedEvent = null) =>
     setTravelModal({ open: true, saving: false, error: "", selectedEvent })
+  const removeTravelEvent = async (event) => {
+    try {
+      await deleteCalendarEvent(event)
+      const key = eventKey(event)
+      setCalendar((state) => ({
+        ...state,
+        events: state.events.filter((item) => eventKey(item) !== key),
+        error: "",
+        lastSync: new Date(),
+      }))
+      setSuccessPopup({
+        open: true,
+        title: "Event deleted",
+        message: "The event was successfully deleted from Google Calendar.",
+      })
+      return true
+    } catch (error) {
+      setCalendar((state) => ({ ...state, error: error.message }))
+      return false
+    }
+  }
   const calendarProps = {
     calendar,
     connectCalendar,
     refreshCalendar,
     loadCalendarMonth,
     openTravelModal,
+    removeTravelEvent,
   }
   return (
-    <div className="flex min-h-screen min-w-[320px] bg-[#f4f6fa] font-['DM_Sans',sans-serif] text-[#172033] antialiased [&_button]:cursor-pointer">
+    <div
+      className={`flex min-h-screen min-w-[320px] bg-[#f4f6fa] font-['DM_Sans',sans-serif] text-[#172033] antialiased [&_button]:cursor-pointer ${settings.preferences.reduceMotion ? "reduce-motion" : ""}`}
+    >
       <Sidebar
         activePage={activePage}
         setActivePage={navigate}
@@ -275,8 +361,15 @@ export default function App() {
         >
           <Icon name="menu" />
         </button>
-        <div className="mx-auto max-w-[1600px] px-8 pb-[46px] pt-[18px] max-[760px]:px-4 max-[760px]:pb-[23px] max-[760px]:pt-[62px]">
-          <ActivePage onNavigate={navigate} {...calendarProps} />
+        <div
+          className={`mx-auto max-w-[1600px] max-[760px]:px-4 max-[760px]:pb-[23px] max-[760px]:pt-[62px] max-[380px]:px-2.5 ${settings.preferences.compactMode ? "px-5 pb-7 pt-3" : "px-8 pb-[46px] pt-[18px]"}`}
+        >
+          <ActivePage
+            onNavigate={navigate}
+            settings={settings}
+            updateSettings={updateSettings}
+            {...calendarProps}
+          />
         </div>
       </main>
       <TravelAssignmentModal
@@ -290,9 +383,10 @@ export default function App() {
         onSubmit={addTravel}
       />
       <SuccessPopup
-        open={successPopup}
-        message="The personnel and notes were updated in Google Calendar."
-        onClose={() => setSuccessPopup(false)}
+        open={successPopup.open}
+        title={successPopup.title}
+        message={successPopup.message}
+        onClose={() => setSuccessPopup({ open: false, title: "", message: "" })}
       />
     </div>
   )

@@ -71,7 +71,28 @@ export async function getCalendarEvents(accessToken, options = {}) {
     )
   }
   const payload = await response.json()
-  return (payload.items || []).map(normalizeCalendarEvent)
+  const colorContext = await getGoogleColorContext(accessToken, calendarId)
+  return (payload.items || []).map((event) => normalizeCalendarEvent(event, colorContext))
+}
+
+async function getGoogleColorContext(accessToken, calendarId) {
+  const headers = { Authorization: `Bearer ${accessToken}` }
+  const [colorsResponse, calendarResponse] = await Promise.all([
+    fetch("https://www.googleapis.com/calendar/v3/colors", { headers }),
+    fetch(
+      `https://www.googleapis.com/calendar/v3/users/me/calendarList/${encodeURIComponent(calendarId)}`,
+      { headers },
+    ),
+  ])
+  const colors = colorsResponse.ok ? await colorsResponse.json() : {}
+  const calendar = calendarResponse.ok ? await calendarResponse.json() : {}
+  return {
+    eventColors: colors.event || {},
+    calendarColor:
+      calendar.backgroundColor ||
+      (calendar.colorId && colors.calendar?.[calendar.colorId]?.background),
+    calendarForegroundColor: calendar.foregroundColor || "#ffffff",
+  }
 }
 
 export async function createCalendarEvent(event) {
@@ -96,6 +117,22 @@ export async function createCalendarEvent(event) {
   if (!response.ok) throw new Error(`Apps Script request failed (${response.status}).`)
   const payload = await readJsonResponse(response)
   if (!payload.ok) throw new Error(payload.error || "The travel schedule could not be created.")
+  return payload
+}
+
+export async function deleteCalendarEvent(event) {
+  const endpoint = getAppsScriptEndpoint()
+  if (!endpoint) throw new Error("Deleting events requires the Apps Script integration.")
+  const body = new URLSearchParams({
+    code: import.meta.env.VITE_GOOGLE_APPS_SCRIPT_ACCESS_CODE || "",
+    action: "delete",
+    eventId: event.id || "",
+    eventStart: event.start instanceof Date ? event.start.toISOString() : event.start || "",
+  })
+  const response = await fetch(endpoint, { method: "POST", body })
+  if (!response.ok) throw new Error(`Apps Script request failed (${response.status}).`)
+  const payload = await readJsonResponse(response)
+  if (!payload.ok) throw new Error(payload.error || "The calendar event could not be deleted.")
   return payload
 }
 
@@ -151,7 +188,7 @@ async function readJsonResponse(response) {
   }
 }
 
-function normalizeCalendarEvent(event) {
+function normalizeCalendarEvent(event, colorContext = {}) {
   const isAllDay = Boolean(event.start?.date)
 
   const startValue = event.start?.dateTime || event.start?.date
@@ -207,6 +244,15 @@ function normalizeCalendarEvent(event) {
   const assignedPersonnel = normalizePersonnel(
     event.personnel || extractPersonnel(event.description || ""),
   )
+  const googleEventColor = event.color || colorContext.eventColors?.[event.colorId]
+  const color =
+    googleEventColor ||
+    (colorContext.calendarColor
+      ? {
+          background: colorContext.calendarColor,
+          foreground: colorContext.calendarForegroundColor,
+        }
+      : null)
 
   return {
     id: event.id,
@@ -234,6 +280,8 @@ function normalizeCalendarEvent(event) {
     status: event.status === "confirmed" ? "Confirmed" : "Pending",
 
     htmlLink: event.htmlLink,
+
+    color,
   }
 }
 function parseCalendarDate(value) {
@@ -262,10 +310,7 @@ function extractAssignmentNotes(description) {
 }
 
 function normalizePersonnel(value) {
-  const names = Array.isArray(value)
-    ? value
-    : String(value || "")
-        .split(",")
+  const names = Array.isArray(value) ? value : String(value || "").split(",")
   return names.map(resolvePersonnelName).filter(Boolean)
 }
 

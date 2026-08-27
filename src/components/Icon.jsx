@@ -48,6 +48,11 @@ const paths = {
     </>
   ),
   check: <path d="m5 12 4 4L19 6" />,
+  trash: (
+    <>
+      <path d="M3 6h18M8 6V4h8v2M19 6l-1 15H6L5 6M10 10v7M14 10v7" />
+    </>
+  ),
   trend: (
     <>
       <path d="m3 17 6-6 4 4 8-8" />
