@@ -238,14 +238,14 @@ export default function TravelCalendar({
               return (
                 <div
                   key={dateKey(date)}
-                  className={`relative h-[132px] min-w-0 cursor-pointer overflow-visible border-b border-r border-[#e8ecf3] bg-white p-[10px] transition-colors hover:bg-[#f6f9ff] [&:nth-child(7n)]:border-r-0 ${outside ? "bg-[#fafbfc] text-[#b8bec9]" : ""} ${today ? "bg-[#f8faff] shadow-[inset_0_3px_0_#3267e3]" : ""} ${past ? "bg-[#fbfcfd] [&_.event]:opacity-75 [&_.event]:saturate-[.85] [&_.more]:opacity-70" : ""}`}
+                  className={`relative h-[132px] min-w-0 cursor-pointer overflow-visible border-b border-r border-[#e8ecf3] bg-white p-[10px] transition-colors hover:bg-[#f6f9ff] [&:nth-child(7n)]:border-r-0 ${outside ? "bg-[#fafbfc] text-[#b8bec9]" : ""} ${today ? "bg-[#f8faff] shadow-[inset_0_3px_0_#3267e3]" : ""} ${past ? "bg-[#fbfcfd] [&_.event]:opacity-70 [&_.event]:saturate-[.8] [&_.event]:blur-[.35px] [&_.more]:opacity-65 [&_.more]:blur-[.25px]" : ""}`}
                   onClick={() => openDay(date)}
                   role="button"
                   tabIndex="0"
                   onKeyDown={(e) => e.key === "Enter" && openDay(date)}
                 >
                   <span
-                    className={`mb-[7px] grid size-[28px] place-items-center rounded-[9px] text-[12px] font-bold ${today ? "bg-[#3267e3] text-white shadow-[0_4px_10px_#3267e32e]" : past ? "text-[#aeb5c1]" : "text-[#48546a]"}`}
+                    className={`mb-[7px] grid size-[28px] place-items-center rounded-[9px] text-[12px] font-bold ${today ? "bg-[#3267e3] text-white shadow-[0_4px_10px_#3267e32e]" : past ? "text-[#aeb5c1] blur-[.3px]" : "text-[#48546a]"}`}
                   >
                     {date.getDate()}
                   </span>
@@ -321,7 +321,7 @@ export default function TravelCalendar({
               <button
                 key={key}
                 type="button"
-                className={`relative flex min-h-[62px] min-w-0 flex-col items-center border-b border-r border-[#e8ecf3] bg-white px-0.5 py-2 text-center [&:nth-child(7n)]:border-r-0 ${outside ? "bg-[#fafbfc] text-[#b8bec9]" : "text-[#48546a]"} ${today ? "bg-[#f3f7ff] shadow-[inset_0_2px_0_#3267e3]" : ""} ${past ? "opacity-70" : ""}`}
+                className={`relative flex min-h-[62px] min-w-0 flex-col items-center border-b border-r border-[#e8ecf3] bg-white px-0.5 py-2 text-center [&:nth-child(7n)]:border-r-0 ${outside ? "bg-[#fafbfc] text-[#b8bec9]" : "text-[#48546a]"} ${today ? "bg-[#f3f7ff] shadow-[inset_0_2px_0_#3267e3]" : ""} ${past ? "opacity-65 blur-[.35px]" : ""}`}
                 onClick={() => openDay(date)}
                 aria-label={`${date.toLocaleDateString("en-US", { month: "long", day: "numeric" })}, ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`}
               >

@@ -54,8 +54,8 @@ export default function Sidebar({ activePage, setActivePage, open, onClose, cale
                   <Icon name={item.icon} size={17} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-[12px] font-semibold">{item.name}</strong>
-                  <small className={`mt-0.5 block truncate text-[8px] font-medium tracking-[.03em] transition-colors ${active ? "text-[#91a9db]" : "text-[#5f6d85] group-hover:text-[#75849d]"}`}>{item.hint}</small>
+                  <strong className="block truncate text-[14px] font-semibold">{item.name}</strong>
+                  <small className={`mt-0.5 block truncate text-[10px] font-medium tracking-[.03em] transition-colors ${active ? "text-[#91a9db]" : "text-[#5f6d85] group-hover:text-[#75849d]"}`}>{item.hint}</small>
                 </span>
                 <span className={`transition-all duration-300 ${active ? "text-[#91abed]" : "-translate-x-1 text-[#4e5d75] opacity-0 group-hover:translate-x-0 group-hover:opacity-100"}`}><Icon name="chevron" size={13} /></span>
                 {active && <span className="sidebar-active-line absolute bottom-2 right-0 top-2 w-[3px] rounded-l-full bg-gradient-to-b from-[#86a8ff] to-[#725ee9] shadow-[0_0_13px_#7298ff]" />}
