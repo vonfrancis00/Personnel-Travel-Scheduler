@@ -3,9 +3,9 @@ import { ui } from "../styles"
 
 const menu = [
   { name: "Dashboard", icon: "dashboard", hint: "Overview" },
-  { name: "Calendar", icon: "calendar", hint: "Travel calendar" },
-  { name: "Travel Schedules", icon: "plane", hint: "All itineraries" },
-  { name: "Personnel", icon: "users", hint: "Team directory" },
+  { name: "Calendar", icon: "calendar", hint: "Travel Calendar" },
+  { name: "Travel Schedules", icon: "plane", hint: "All Itineraries" },
+  { name: "Personnel", icon: "users", hint: "Team Directory" },
   { name: "Settings", icon: "settings", hint: "Preferences" },
 ]
 
