@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import Icon from "../components/Icon"
+import ScheduleDetailsModal from "../components/ScheduleDetailsModal"
 import { statusClass, ui } from "../styles"
 
 const samples = [
@@ -21,10 +22,11 @@ export function Page({ title, sub, children }) {
   </div>
 }
 
-export default function TravelSchedules({ calendar, connectCalendar, refreshCalendar, loadCalendarMonth, openTravelModal }) {
+export default function TravelSchedules({ calendar, connectCalendar, refreshCalendar, loadCalendarMonth, openTravelModal, removeTravelEvent }) {
   const [month, setMonth] = useState(() => new Date())
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState("All")
+  const [selectedEvent, setSelectedEvent] = useState(null)
   const selectMonth = (date) => setMonth(new Date(date.getFullYear(), date.getMonth(), 1))
   const moveMonth = (amount) => selectMonth(new Date(month.getFullYear(), month.getMonth() + amount, 1))
 
@@ -89,7 +91,7 @@ export default function TravelSchedules({ calendar, connectCalendar, refreshCale
         <span className={statusClass(getStatus(nextTrip).toLowerCase())}><i />{getStatus(nextTrip)}</span>
       </div>}
 
-      <div className="space-y-2 p-5 max-[560px]:p-3">{shown.map((event, index) => { const date = getDate(event); const people = event.personnel || []; return <article key={`${event.id || event.title}-${index}`} className="group grid grid-cols-[64px_minmax(0,1.6fr)_minmax(150px,.8fr)_minmax(150px,.8fr)_auto] items-center gap-4 rounded-[14px] border border-[#e6ebf3] bg-[#fbfcfe] px-4 py-3 transition hover:-translate-y-px hover:border-[#cdd9ed] hover:bg-white hover:shadow-[0_8px_22px_#26395c0c] max-[900px]:grid-cols-[58px_1fr_auto] max-[560px]:grid-cols-[48px_1fr] max-[560px]:gap-3 max-[560px]:p-3">
+      <div className="space-y-2 p-5 max-[560px]:p-3">{shown.map((event, index) => { const date = getDate(event); const people = event.personnel || []; return <article key={`${event.id || event.title}-${index}`} className="group grid cursor-pointer grid-cols-[64px_minmax(0,1.6fr)_minmax(150px,.8fr)_minmax(150px,.8fr)_auto] items-center gap-4 rounded-[14px] border border-[#e6ebf3] bg-[#fbfcfe] px-4 py-3 transition hover:-translate-y-px hover:border-[#cdd9ed] hover:bg-white hover:shadow-[0_8px_22px_#26395c0c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3267e3] max-[900px]:grid-cols-[58px_1fr_auto] max-[560px]:grid-cols-[48px_1fr] max-[560px]:gap-3 max-[560px]:p-3" role="button" tabIndex={0} aria-label={`View ${event.title || "untitled event"} details`} onClick={() => setSelectedEvent(event)} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); setSelectedEvent(event) } }}>
         <div className="grid h-14 place-items-center rounded-[11px] bg-[#eaf1ff] text-center text-[#3267e3] max-[560px]:h-12"><span><strong className="block font-[Manrope] text-xl leading-none max-[560px]:text-lg">{date.getDate()}</strong><span className="mt-1 block text-[7px] font-bold uppercase tracking-[.1em]">{date.toLocaleDateString("en-US", { month: "short" })}</span></span></div>
         <div className="min-w-0"><div className="mb-1.5 flex items-center gap-2"><span className="text-[8px] font-bold uppercase tracking-[.1em] text-[#7890bd]">{event.allDay ? "All day" : date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span><span className="size-1 rounded-full bg-[#c7cfdd]" /><span className="text-[8px] text-[#929baa]">Travel assignment</span></div><h3 className="m-0 truncate font-[Manrope] text-[12px] font-extrabold text-[#273247]">{event.title || "Untitled event"}</h3><div className="mt-2 hidden items-center gap-3 text-[9px] text-[#697487] max-[900px]:flex max-[560px]:flex-col max-[560px]:items-start max-[560px]:gap-1"><span className="flex items-center gap-1.5"><Icon name="users" size={12} />{people.join(", ") || "Unassigned"}</span><span className="flex items-center gap-1.5"><Icon name="location" size={12} />{destination(event.location)}</span></div></div>
         <div className="flex min-w-0 items-center gap-2 max-[900px]:hidden"><div className="flex -space-x-2">{people.slice(0, 3).map((person) => <span key={person} title={person} className="grid size-7 place-items-center rounded-full border-2 border-white bg-gradient-to-br from-[#5178d8] to-[#7898e4] text-[7px] font-bold text-white">{initials(person)}</span>)}</div><span className="truncate text-[9px] font-semibold text-[#596579]">{people.join(", ") || "Unassigned"}</span></div>
@@ -100,5 +102,6 @@ export default function TravelSchedules({ calendar, connectCalendar, refreshCale
       {!calendar.loading && !shown.length && <div className="flex flex-col items-center px-5 py-14 text-center"><span className="grid size-12 place-items-center rounded-full bg-[#f1f5fb] text-[#7083a3]"><Icon name="calendar" size={21} /></span><strong className="mt-4 font-[Manrope] text-sm text-[#374256]">No matching schedules</strong><p className="mb-0 mt-1 text-[10px] text-[#8b94a3]">Try another month or adjust your search and status filter.</p></div>}
       <footer className="flex items-center justify-between border-t border-[#edf0f5] px-5 py-3 text-[9px] text-[#8a94a5]"><span>Showing {shown.length} of {events.length} schedules</span><span>{calendar.connected ? "Live Google Calendar data" : "Preview data"}</span></footer>
     </section>
+    <ScheduleDetailsModal event={selectedEvent} connected={calendar.connected} onClose={() => setSelectedEvent(null)} onAssign={openTravelModal} onDelete={removeTravelEvent} />
   </div>
 }
