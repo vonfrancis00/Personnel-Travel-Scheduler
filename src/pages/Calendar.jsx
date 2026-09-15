@@ -8,6 +8,7 @@ export default function Calendar({
   loadCalendarMonth,
   openTravelModal,
   removeTravelEvent,
+  addCalendarEvent,
 }) {
   return (
     <div className="space-y-5">
@@ -28,6 +29,7 @@ export default function Calendar({
         onAssign={openTravelModal}
         onMonthChange={loadCalendarMonth}
         onDelete={removeTravelEvent}
+        onCreateEvent={addCalendarEvent}
       />
     </div>
   )

@@ -30,7 +30,7 @@ function appsScriptMiddleware(endpoint) {
 
           let upstream
           let body
-          const attempts = method === "GET" ? 2 : 1
+          const attempts = method === "GET" ? 3 : 1
           for (let attempt = 0; attempt < attempts; attempt += 1) {
             upstream = await fetch(targetUrl, options)
             body = await upstream.text()
@@ -40,15 +40,23 @@ function appsScriptMiddleware(endpoint) {
             } catch {
               if (attempt + 1 < attempts) {
                 targetUrl.searchParams.set("_retry", Date.now().toString())
+                await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)))
                 continue
               }
               response.statusCode = 502
               response.setHeader("content-type", "application/json; charset=utf-8")
+              const contentType = upstream.headers.get("content-type") || "unknown content type"
+              const bodyPreview = body.replace(/\s+/g, " ").trim().slice(0, 240)
               response.end(
                 JSON.stringify({
                   ok: false,
                   error:
-                    "Google Calendar returned a webpage instead of event data. Check the Apps Script web-app deployment access.",
+                    body.trimStart().startsWith("<")
+                      ? "Google Calendar returned a webpage instead of event data. Redeploy the Apps Script web app as a new version, authorize it if prompted, and keep access set to Anyone."
+                      : "Google Calendar returned an invalid response.",
+                  upstreamStatus: upstream.status,
+                  upstreamContentType: contentType,
+                  upstreamPreview: bodyPreview,
                 }),
               )
               return
@@ -71,6 +79,8 @@ function appsScriptMiddleware(endpoint) {
               error: timedOut
                 ? "Google Calendar took too long to respond."
                 : "Could not reach the Google Calendar service.",
+              detail: error?.message || String(error),
+              cause: error?.cause?.message || error?.cause?.code || "",
             }),
           )
         }

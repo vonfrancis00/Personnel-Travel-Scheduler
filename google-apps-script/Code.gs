@@ -21,6 +21,20 @@ const DEFAULT_PERSONNEL_EMAILS = {
   'Von Francis': 'vflavictoria@ched.gov.ph'
 };
 
+const EVENT_COLORS_BY_ID = {
+  '1': CalendarApp.EventColor.PALE_BLUE,
+  '2': CalendarApp.EventColor.PALE_GREEN,
+  '3': CalendarApp.EventColor.MAUVE,
+  '4': CalendarApp.EventColor.PALE_RED,
+  '5': CalendarApp.EventColor.YELLOW,
+  '6': CalendarApp.EventColor.ORANGE,
+  '7': CalendarApp.EventColor.CYAN,
+  '8': CalendarApp.EventColor.GRAY,
+  '9': CalendarApp.EventColor.BLUE,
+  '10': CalendarApp.EventColor.GREEN,
+  '11': CalendarApp.EventColor.RED
+};
+
 /**
  * Run this once from the Apps Script editor to authorize Gmail sending.
  * After permission is granted, a confirmation email is sent to the account
@@ -67,16 +81,8 @@ function doGet(request) {
     } catch (calendarListError) {
       // Event colors can still be shown if the calendar-list entry is unavailable.
     }
-    const result = Calendar.Events.list(calendarId, {
-      timeMin: start.toISOString(),
-      timeMax: end.toISOString(),
-      singleEvents: true,
-      orderBy: 'startTime',
-      showDeleted: false,
-      maxResults: 500,
-      fields: 'items(iCalUID,id,summary,location,description,extendedProperties/private,status,start,end,colorId)'
-    });
-    const events = (result.items || []).map(function(event) {
+    const calendarEvents = listCalendarEvents(calendarId, start, end);
+    const events = calendarEvents.map(function(event) {
       const privateData = event.extendedProperties && event.extendedProperties.private || {};
       const description = event.description || '';
       const notesMatch = description.match(/(?:^|\n)Notes:\s*([^\n]*)/i);
@@ -159,7 +165,12 @@ function doPost(request) {
       }
       const eventToDelete = findCalendarEvent(calendar, values.eventId, values.eventStart);
       if (!eventToDelete) {
-        return jsonResponse({ ok: false, error: 'The selected calendar event was not found.' });
+        return jsonResponse({
+          ok: true,
+          id: values.eventId,
+          alreadyDeleted: true,
+          message: 'Calendar event was already deleted.'
+        });
       }
       eventToDelete.deleteEvent();
       return jsonResponse({
@@ -232,14 +243,43 @@ function doPost(request) {
       values.notes ? 'Notes: ' + values.notes : ''
     ].filter(Boolean).join('\n');
 
-    const event = calendar.createEvent(values.title, start, end, {
-      location: values.location || '',
-      description: description
-    });
+    const event = values.allDay === 'true'
+      ? calendar.createAllDayEvent(values.title, start, end, {
+          location: values.location || '',
+          description: description
+        })
+      : calendar.createEvent(values.title, start, end, {
+          location: values.location || '',
+          description: description
+        });
+    if (values.colorId && EVENT_COLORS_BY_ID[values.colorId]) {
+      event.setColor(EVENT_COLORS_BY_ID[values.colorId]);
+    }
     event.setTag('personnel', values.personnel);
     if (values.personnelEmail) event.addGuest(values.personnelEmail);
 
-    return jsonResponse({ ok: true, id: event.getId(), message: 'Travel schedule created.' });
+    return jsonResponse({
+      ok: true,
+      id: event.getId(),
+      event: {
+        id: event.getId(),
+        summary: event.getTitle(),
+        location: event.getLocation() || '',
+        description: description,
+        personnel: values.personnel,
+        assignmentNotes: values.notes || '',
+        guests: [],
+        status: 'confirmed',
+        colorId: values.colorId || '',
+        start: values.allDay === 'true'
+          ? { date: Utilities.formatDate(start, Session.getScriptTimeZone(), 'yyyy-MM-dd') }
+          : { dateTime: start.toISOString() },
+        end: values.allDay === 'true'
+          ? { date: Utilities.formatDate(end, Session.getScriptTimeZone(), 'yyyy-MM-dd') }
+          : { dateTime: end.toISOString() }
+      },
+      message: 'Travel schedule created.'
+    });
   } catch (error) {
     return jsonResponse({ ok: false, error: error.message || String(error) });
   }
@@ -257,6 +297,27 @@ function findCalendarEvent(calendar, eventId, eventStart) {
     return event.getId() === eventId && event.getStartTime().getTime() === selectedStart.getTime();
   });
   return matchingEvents.length ? matchingEvents[0] : calendarEvent;
+}
+
+function listCalendarEvents(calendarId, start, end) {
+  const events = [];
+  let pageToken = '';
+  do {
+    const options = {
+      timeMin: start.toISOString(),
+      timeMax: end.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+      showDeleted: false,
+      maxResults: 2500,
+      fields: 'items(iCalUID,id,summary,location,description,extendedProperties/private,status,start,end,colorId),nextPageToken'
+    };
+    if (pageToken) options.pageToken = pageToken;
+    const result = Calendar.Events.list(calendarId, options);
+    events.push.apply(events, result.items || []);
+    pageToken = result.nextPageToken || '';
+  } while (pageToken);
+  return events;
 }
 
 function sendItineraryEmails(event, personnelValue, assignmentNotes, properties, calendar) {

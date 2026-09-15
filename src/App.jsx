@@ -13,6 +13,7 @@ import {
   createCalendarEvent,
   deleteCalendarEvent,
   getCalendarEvents,
+  normalizeCalendarEvent,
   requestCalendarAccess,
 } from "./services/api"
 import { loadSettings, saveSettings } from "./services/settings"
@@ -35,9 +36,41 @@ const monthRange = (date = new Date()) => {
 const monthKey = (date) => `${date.getFullYear()}-${date.getMonth()}`
 const eventKey = (event) =>
   `${event.id || event.title}|${event.start instanceof Date ? event.start.getTime() : event.start || ""}`
+const eventKeysMatch = (first, second) => {
+  if (!first || !second) return false
+  return eventKey(first) === eventKey(second)
+}
 const mergeEvents = (current, incoming) => [
   ...new Map([...current, ...incoming].map((event) => [eventKey(event), event])).values(),
 ]
+const dateOnly = (date) => {
+  const value = date instanceof Date ? date : new Date(date)
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, "0")
+  const day = String(value.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+const createdEventPayload = (form, result) => ({
+  id: result.id || `${form.title}-${new Date(form.start).toISOString()}`,
+  summary: form.title || "Official Travel",
+  location: form.location || "",
+  description: [
+    `Personnel: ${form.personnel}`,
+    form.purpose ? `Purpose: ${form.purpose}` : "",
+    form.notes ? `Notes: ${form.notes}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n"),
+  personnel: form.personnel,
+  assignmentNotes: form.notes || "",
+  guests: [],
+  status: "confirmed",
+  colorId: form.colorId || "",
+  start: form.allDay
+    ? { date: dateOnly(form.start) }
+    : { dateTime: new Date(form.start).toISOString() },
+  end: form.allDay ? { date: dateOnly(form.end) } : { dateTime: new Date(form.end).toISOString() },
+})
 const eventOverlapsRange = (event, range) => {
   const start = event.start instanceof Date ? event.start : new Date(event.start)
   const end = event.end instanceof Date ? event.end : new Date(event.end || event.start)
@@ -47,6 +80,11 @@ const replaceEventsInRange = (current, incoming, range) =>
   mergeEvents(
     current.filter((event) => !eventOverlapsRange(event, range)),
     incoming,
+  )
+const DELETED_EVENT_TOMBSTONE_MS = 10 * 60 * 1000
+const isAmbiguousDeleteResponse = (error) =>
+  /returned a webpage|invalid response|bad gateway|could not reach|too long/i.test(
+    error?.message || "",
   )
 
 export default function App() {
@@ -71,9 +109,28 @@ export default function App() {
   const refreshInFlight = useRef(null)
   const monthRequests = useRef(new Map())
   const loadedMonths = useRef(new Set())
+  const deletedEvents = useRef(new Map())
+  const backgroundSyncInFlight = useRef(false)
   const travelPageRetryStarted = useRef(false)
   const sentReminders = useRef(new Set())
   const ActivePage = pages[activePage]
+  const rememberDeletedEvent = (event) => {
+    deletedEvents.current.set(eventKey(event), Date.now())
+  }
+  const forgetDeletedEvent = (event) => {
+    deletedEvents.current.delete(eventKey(event))
+  }
+  const clearExpiredDeletedEvents = useCallback(() => {
+    const now = Date.now()
+    deletedEvents.current.forEach((deletedAt, key) => {
+      if (now - deletedAt > DELETED_EVENT_TOMBSTONE_MS) deletedEvents.current.delete(key)
+    })
+  }, [])
+  const withoutPendingDeletedEvents = useCallback((events) => {
+    clearExpiredDeletedEvents()
+    if (!deletedEvents.current.size) return events
+    return events.filter((event) => !deletedEvents.current.has(eventKey(event)))
+  }, [clearExpiredDeletedEvents])
   const navigate = (page) => {
     setActivePage(page)
     setSidebarOpen(false)
@@ -121,23 +178,26 @@ export default function App() {
       const range = monthRange(currentMonth)
       const request = getCalendarEvents(token, range)
         .then((events) => {
+          const visibleEvents = withoutPendingDeletedEvents(events)
           loadedMonths.current.add(monthKey(currentMonth))
           setCalendar((state) => ({
             ...state,
-            events: replaceEventsInRange(state.events, events, range),
+            events: replaceEventsInRange(state.events, visibleEvents, range),
             connected: true,
             loading: background ? state.loading : false,
             error: "",
             lastSync: new Date(),
           }))
-          return events
+          return visibleEvents
         })
         .catch((error) => {
-          setCalendar((state) => ({
-            ...state,
-            loading: background ? state.loading : false,
-            error: error.message,
-          }))
+          if (!background) {
+            setCalendar((state) => ({
+              ...state,
+              loading: false,
+              error: error.message,
+            }))
+          }
           return []
         })
         .finally(() => {
@@ -146,7 +206,7 @@ export default function App() {
       refreshInFlight.current = request
       return request
     },
-    [],
+    [withoutPendingDeletedEvents],
   )
   const loadCalendarMonth = useCallback((date, { background = false, force = false } = {}) => {
     const token = accessToken.current
@@ -159,16 +219,17 @@ export default function App() {
     const range = monthRange(date)
     const request = getCalendarEvents(token, range)
       .then((events) => {
+        const visibleEvents = withoutPendingDeletedEvents(events)
         loadedMonths.current.add(key)
         setCalendar((state) => ({
           ...state,
-          events: replaceEventsInRange(state.events, events, range),
+          events: replaceEventsInRange(state.events, visibleEvents, range),
           connected: true,
           loading: background ? state.loading : false,
           error: "",
           lastSync: new Date(),
         }))
-        return events
+        return visibleEvents
       })
       .catch((error) => {
         if (!background)
@@ -178,7 +239,7 @@ export default function App() {
       .finally(() => monthRequests.current.delete(key))
     monthRequests.current.set(key, request)
     return request
-  }, [])
+  }, [withoutPendingDeletedEvents])
   useEffect(() => {
     if (!calendar.connected) return
     let cancelled = false
@@ -201,15 +262,21 @@ export default function App() {
   useEffect(() => {
     if (!calendar.connected) return
 
-    const syncLoadedMonths = () => {
+    const syncLoadedMonths = async () => {
       if (document.visibilityState === "hidden") return
+      if (backgroundSyncInFlight.current) return
+      backgroundSyncInFlight.current = true
       const currentKey = monthKey(new Date())
-      refreshCalendar(accessToken.current, { background: true })
-      loadedMonths.current.forEach((key) => {
-        if (key === currentKey) return
-        const [year, month] = key.split("-").map(Number)
-        loadCalendarMonth(new Date(year, month, 1), { background: true, force: true })
-      })
+      try {
+        await refreshCalendar(accessToken.current, { background: true })
+        const loadedKeys = Array.from(loadedMonths.current).filter((key) => key !== currentKey)
+        for (const key of loadedKeys) {
+          const [year, month] = key.split("-").map(Number)
+          await loadCalendarMonth(new Date(year, month, 1), { background: true, force: true })
+        }
+      } finally {
+        backgroundSyncInFlight.current = false
+      }
     }
     const syncWhenVisible = () => {
       if (document.visibilityState === "visible") syncLoadedMonths()
@@ -311,26 +378,79 @@ export default function App() {
       return false
     }
   }
+  const addCalendarEvent = async (form) => {
+    try {
+      const result = await createCalendarEvent(form)
+      const createdEvent = normalizeCalendarEvent(result.event || createdEventPayload(form, result))
+      setCalendar((state) => ({
+        ...state,
+        events: mergeEvents(state.events, [createdEvent]),
+        connected: true,
+        error: "",
+        lastSync: new Date(),
+      }))
+      loadedMonths.current.add(monthKey(new Date(form.start)))
+      loadCalendarMonth(new Date(form.start), { background: true, force: true })
+      setSuccessPopup({
+        open: true,
+        title: "Event added",
+        message: "The event was saved successfully and synchronized with Google Calendar.",
+      })
+      return { ok: true, result }
+    } catch (error) {
+      setCalendar((state) => ({ ...state, error: error.message }))
+      return { ok: false, error: error.message }
+    }
+  }
   const openTravelModal = (selectedEvent = null) =>
     setTravelModal({ open: true, saving: false, error: "", selectedEvent })
   const removeTravelEvent = async (event) => {
+    const key = eventKey(event)
+    rememberDeletedEvent(event)
+    setCalendar((state) => ({
+      ...state,
+      events: state.events.filter((item) => eventKey(item) !== key),
+      error: "",
+      lastSync: new Date(),
+    }))
     try {
       await deleteCalendarEvent(event)
-      const key = eventKey(event)
+      setSuccessPopup({
+        open: true,
+        title: "Event deleted",
+        message: "The event was removed from Google Calendar.",
+      })
+      return true
+    } catch (error) {
+      if (isAmbiguousDeleteResponse(error)) {
+        setCalendar((state) => ({
+          ...state,
+          error: "",
+          lastSync: new Date(),
+        }))
+        setSuccessPopup({
+          open: true,
+          title: "Event deleted",
+          message:
+            "The event was removed locally while Google Calendar finishes confirming the delete.",
+        })
+        return true
+      }
+      forgetDeletedEvent(event)
       setCalendar((state) => ({
         ...state,
-        events: state.events.filter((item) => eventKey(item) !== key),
-        error: "",
+        events: mergeEvents(
+          state.events.filter((item) => !eventKeysMatch(item, event)),
+          [event],
+        ),
+        error: error.message,
         lastSync: new Date(),
       }))
       setSuccessPopup({
         open: true,
-        title: "Event deleted",
-        message: "The event was successfully deleted from Google Calendar.",
+        title: "Delete failed",
+        message: error.message,
       })
-      return true
-    } catch (error) {
-      setCalendar((state) => ({ ...state, error: error.message }))
       return false
     }
   }
@@ -341,6 +461,7 @@ export default function App() {
     loadCalendarMonth,
     openTravelModal,
     removeTravelEvent,
+    addCalendarEvent,
   }
   return (
     <div

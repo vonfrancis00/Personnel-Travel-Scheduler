@@ -112,10 +112,14 @@ export async function createCalendarEvent(event) {
     body.set("end", new Date(event.end).toISOString())
     body.set("location", event.location || "")
     body.set("purpose", event.purpose || "")
+    body.set("colorId", event.colorId || "")
+    body.set("allDay", event.allDay ? "true" : "")
   }
   const response = await fetch(endpoint, { method: "POST", body })
-  if (!response.ok) throw new Error(`Apps Script request failed (${response.status}).`)
   const payload = await readJsonResponse(response)
+  if (!response.ok) {
+    throw new Error(payload.error || `Apps Script request failed (${response.status}).`)
+  }
   if (!payload.ok) throw new Error(payload.error || "The travel schedule could not be created.")
   return payload
 }
@@ -130,8 +134,10 @@ export async function deleteCalendarEvent(event) {
     eventStart: event.start instanceof Date ? event.start.toISOString() : event.start || "",
   })
   const response = await fetch(endpoint, { method: "POST", body })
-  if (!response.ok) throw new Error(`Apps Script request failed (${response.status}).`)
   const payload = await readJsonResponse(response)
+  if (!response.ok) {
+    throw new Error(payload.error || `Apps Script request failed (${response.status}).`)
+  }
   if (!payload.ok) throw new Error(payload.error || "The calendar event could not be deleted.")
   return payload
 }
@@ -161,10 +167,10 @@ async function getAppsScriptEvents(endpoint, options = {}) {
   } finally {
     window.clearTimeout(timeout)
   }
-  if (!response.ok) {
-    throw new Error(`Apps Script request failed (${response.status}).`)
-  }
   const payload = await readJsonResponse(response)
+  if (!response.ok) {
+    throw new Error(payload.error || `Apps Script request failed (${response.status}).`)
+  }
   if (payload.ok === false)
     throw new Error(payload.error || "Apps Script could not load the calendar.")
   return (payload.events || []).map(normalizeCalendarEvent)
@@ -182,13 +188,13 @@ async function readJsonResponse(response) {
   } catch {
     throw new Error(
       body.trimStart().startsWith("<")
-        ? "Google Calendar returned a webpage instead of event data. Verify the Apps Script deployment is accessible to Anyone."
+        ? "Google Calendar returned a webpage instead of event data. Redeploy the Apps Script web app as a new version, authorize it if prompted, and keep access set to Anyone."
         : "Google Calendar returned an invalid response.",
     )
   }
 }
 
-function normalizeCalendarEvent(event, colorContext = {}) {
+export function normalizeCalendarEvent(event, colorContext = {}) {
   const isAllDay = Boolean(event.start?.date)
 
   const startValue = event.start?.dateTime || event.start?.date

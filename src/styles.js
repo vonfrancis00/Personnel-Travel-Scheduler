@@ -18,7 +18,10 @@ export const ui = {
 
 export const statusClass = (status) => {
   const variants = {
+    "happening now": "bg-[#fff0f0] text-[#c14646] [&_i]:bg-[#ef6363]",
+    upcoming: "bg-[#eaf1ff] text-[#3267e3] [&_i]:bg-[#5e86e5]",
     confirmed: "bg-[#e7f8f1] text-[#15996a] [&_i]:bg-[#37c992]",
+    accomplished: "bg-[#eef2f8] text-[#68758a] [&_i]:bg-[#8e96a3]",
     pending: "bg-[#fff3e2] text-[#bf7824] [&_i]:bg-[#e49a3f]",
     draft: "bg-[#eef0f3] text-[#6e7787] [&_i]:bg-[#8e96a3]",
   }
