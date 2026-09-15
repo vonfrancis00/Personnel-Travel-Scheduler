@@ -37,6 +37,14 @@ VITE_GOOGLE_APPS_SCRIPT_ACCESS_CODE=the-same-random-value-as-ACCESS_CODE
 
 Do not set `VITE_GOOGLE_CLIENT_ID` when using the Apps Script route. Restart the Vite development server after editing `.env.local`. For later Apps Script code changes, create a new deployment version through **Deploy → Manage deployments → Edit**.
 
+For Vercel, also add the same `VITE_GOOGLE_APPS_SCRIPT_URL` and
+`VITE_GOOGLE_APPS_SCRIPT_ACCESS_CODE` values in the project environment
+variables, then redeploy. Vite embeds `VITE_` values during `npm run build`, so
+changing `.env.local` only fixes local development. If production shows a
+`script.googleusercontent.com/macros/echo` 404, the deployed app is using an
+old, deleted, or inaccessible Apps Script web app URL; create or update the Apps
+Script web app deployment, copy the new `/exec` URL to Vercel, and deploy again.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
